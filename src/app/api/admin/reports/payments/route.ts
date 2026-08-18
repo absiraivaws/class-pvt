@@ -64,6 +64,8 @@ export async function GET(request: NextRequest) {
     payments: payments.map((p) => ({
       id: p.id,
       reference: p.reference,
+      providerTxnId: p.providerTxnId,
+      receiptNumber: p.receiptNumber,
       sid: p.student.sid,
       student: p.student.name,
       stream: p.student.stream?.name ?? "",
@@ -73,6 +75,9 @@ export async function GET(request: NextRequest) {
       subjects: p.invoice.items.map((i) => i.subjectName),
       amount: p.amount.toNumber(),
       status: p.status,
+      reconciliationStatus: p.reconciliationStatus,
+      paymentMethod: p.paymentMethod,
+      initiatedAt: p.initiatedAt,
       paidAt: p.paidAt,
     })),
   });

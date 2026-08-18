@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Button,
   Input,
@@ -9,6 +9,8 @@ import {
   Alert,
   Card,
 } from "@/components/ui";
+import { SortHeader, type SortDir } from "@/components/data-table";
+import { FilterDropdown } from "@/components/data-table";
 
 type Student = {
   id: string;
@@ -23,11 +25,16 @@ type Student = {
 };
 type Stream = { id: string; name: string };
 
+type SortKey = "sid" | "name" | "nic" | "stream" | "phone" | "status";
+
 export default function AdminStudentsPage() {
-  const [draft, setDraft] = useState("");
-  const [search, setSearch] = useState("");
   const [students, setStudents] = useState<Student[]>([]);
   const [streams, setStreams] = useState<Stream[]>([]);
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterStream, setFilterStream] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
@@ -44,7 +51,7 @@ export default function AdminStudentsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/admin/students?search=${encodeURIComponent(search)}`)
+    fetch("/api/admin/students")
       .then((r) => r.json())
       .then((data) => {
         if (!cancelled && data.students) setStudents(data.students);
@@ -53,7 +60,7 @@ export default function AdminStudentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [search, refresh]);
+  }, [refresh]);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +74,43 @@ export default function AdminStudentsPage() {
       cancelled = true;
     };
   }, []);
+
+  const rows = useMemo(() => {
+    let result = students;
+
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      result = result.filter((s) =>
+        [s.sid, s.name, s.nic, s.stream, s.phone, s.email, s.status]
+          .join(" ")
+          .toLowerCase()
+          .includes(q)
+      );
+    }
+    if (filterStatus) result = result.filter((s) => s.status === filterStatus);
+    if (filterStream) result = result.filter((s) => s.stream === filterStream);
+
+    if (sortKey) {
+      result = [...result].sort((a, b) => {
+        const av = a[sortKey];
+        const bv = b[sortKey];
+        const cmp = String(av).localeCompare(String(bv));
+        return sortDir === "asc" ? cmp : -cmp;
+      });
+    }
+    return result;
+  }, [students, search, filterStatus, filterStream, sortKey, sortDir]);
+
+  function toggleSort(key: SortKey) {
+    if (sortKey !== key) {
+      setSortKey(key);
+      setSortDir("asc");
+    } else if (sortDir === "asc") {
+      setSortDir("desc");
+    } else {
+      setSortKey(null);
+    }
+  }
 
   async function toggleStatus(s: Student) {
     const res = await fetch(`/api/admin/students/${s.id}`, {
@@ -106,28 +150,55 @@ export default function AdminStudentsPage() {
     setRefresh((r) => r + 1);
   }
 
+  function header(key: SortKey, label: string) {
+    return (
+      <SortHeader
+        label={label}
+        active={sortKey === key}
+        dir={sortDir}
+        onToggle={() => toggleSort(key)}
+      />
+    );
+  }
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-slate-900">Students</h1>
         <div className="flex gap-2">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setSearch(draft);
-            }}
-            className="flex gap-2"
-          >
-            <Input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder="Search SID, name, NIC…"
-              className="w-64"
-            />
-            <Button type="submit" variant="secondary">
-              Search
-            </Button>
-          </form>
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search SID, name, NIC…"
+            className="w-64"
+          />
+          <FilterDropdown active={filterStatus !== "" || filterStream !== ""}>
+            <div>
+              <Label>Status</Label>
+              <Select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+              >
+                <option value="">All</option>
+                <option value="ACTIVE">Active</option>
+                <option value="INACTIVE">Inactive</option>
+              </Select>
+            </div>
+            <div>
+              <Label>Stream</Label>
+              <Select
+                value={filterStream}
+                onChange={(e) => setFilterStream(e.target.value)}
+              >
+                <option value="">All</option>
+                {streams.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {s.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </FilterDropdown>
           <Button onClick={() => setShowForm((v) => !v)}>
             {showForm ? "Close" : "Add Student"}
           </Button>
@@ -192,24 +263,24 @@ export default function AdminStudentsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-slate-500">
-                <th className="py-2 font-medium">SID</th>
-                <th className="py-2 font-medium">Name</th>
-                <th className="py-2 font-medium">NIC</th>
-                <th className="py-2 font-medium">Stream</th>
-                <th className="py-2 font-medium">Phone</th>
-                <th className="py-2 font-medium">Status</th>
+                <th className="py-2 pr-3">{header("sid", "SID")}</th>
+                <th className="py-2 pr-3">{header("name", "Name")}</th>
+                <th className="py-2 pr-3">{header("nic", "NIC")}</th>
+                <th className="py-2 pr-3">{header("stream", "Stream")}</th>
+                <th className="py-2 pr-3">{header("phone", "Phone")}</th>
+                <th className="py-2 pr-3">{header("status", "Status")}</th>
                 <th className="py-2 font-medium">Action</th>
               </tr>
             </thead>
             <tbody>
-              {students.length === 0 ? (
+              {rows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-6 text-center text-slate-500">
                     No students found.
                   </td>
                 </tr>
               ) : (
-                students.map((s) => (
+                rows.map((s) => (
                   <tr key={s.id} className="border-b border-slate-100">
                     <td className="py-3">{s.sid}</td>
                     <td className="py-3">{s.name}</td>
