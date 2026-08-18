@@ -1,0 +1,187 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Student {
+  id            String               @id @default(uuid())
+  sid           String               @unique
+  name          String
+  nic           String               @unique
+  streamId      String
+  guardianName  String
+  phone         String
+  email         String               @unique
+  passwordHash  String
+  emailVerified Boolean              @default(false)
+  status        String               @default("ACTIVE")
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  stream      Stream                @relation(fields: [streamId], references: [id])
+  invoices    Invoice[]
+  payments    Payment[]
+  resetTokens PasswordResetToken[]
+}
+
+model Stream {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  status    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+
+  students Student[]
+}
+
+model Subject {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  status      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  subjectFees  SubjectFee[]
+  invoiceItems InvoiceItem[]
+}
+
+model ClassPeriod {
+  id          String   @id @default(uuid())
+  month       Int
+  year        Int
+  displayName String   @unique
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+
+  subjectFees SubjectFee[]
+  invoices    Invoice[]
+
+  @@unique([month, year])
+}
+
+model ClassSession {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  status    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  subjectFees SubjectFee[]
+  invoices    Invoice[]
+}
+
+model SubjectFee {
+  id            String   @id @default(uuid())
+  classPeriodId String
+  sessionId     String
+  subjectId     String
+  amount        Decimal  @db.Decimal(12, 2)
+  status        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  classPeriod ClassPeriod @relation(fields: [classPeriodId], references: [id])
+  session     ClassSession @relation(fields: [sessionId], references: [id])
+  subject     Subject     @relation(fields: [subjectId], references: [id])
+
+  @@unique([classPeriodId, sessionId, subjectId])
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  invoiceNumber String        @unique
+  studentId     String
+  classPeriodId String
+  sessionId     String
+  subtotal      Decimal       @db.Decimal(12, 2)
+  totalAmount   Decimal       @db.Decimal(12, 2)
+  status        String        @default("PENDING_PAYMENT")
+  createdAt     DateTime      @default(now())
+  paidAt        DateTime?
+
+  student     Student        @relation(fields: [studentId], references: [id])
+  classPeriod ClassPeriod    @relation(fields: [classPeriodId], references: [id])
+  session     ClassSession   @relation(fields: [sessionId], references: [id])
+  items       InvoiceItem[]
+  payments    Payment[]
+}
+
+model InvoiceItem {
+  id          String  @id @default(uuid())
+  invoiceId   String
+  subjectId   String
+  subjectName String
+  unitAmount  Decimal @db.Decimal(12, 2)
+  amount      Decimal @db.Decimal(12, 2)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id])
+}
+
+model Payment {
+  id                 String      @id @default(uuid())
+  invoiceId          String
+  studentId          String
+  reference          String      @unique
+  providerTxnId      String?     @unique
+  paymentMethod      String?
+  amount             Decimal     @db.Decimal(12, 2)
+  status             String      @default("INITIATED")
+  reconciliationStatus String    @default("PENDING")
+  receiptNumber      String?     @unique
+  qrReference        String?     @unique
+  qrExpiry           DateTime?
+  initiatedAt        DateTime    @default(now())
+  paidAt             DateTime?
+
+  invoice Invoice     @relation(fields: [invoiceId], references: [id])
+  student Student     @relation(fields: [studentId], references: [id])
+  qrCodes PaymentQr[]
+}
+
+model PaymentQr {
+  id          String   @id @default(uuid())
+  paymentId   String
+  qrReference String   @unique
+  qrData      String
+  amount      Decimal  @db.Decimal(12, 2)
+  generatedAt DateTime @default(now())
+  expiresAt   DateTime
+  status      String   @default("ACTIVE")
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  studentId String
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+}
+
+model AdminUser {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         String   @default("ADMIN")
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  userType   String?
+  action     String
+  entityType String?
+  entityId   String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+}

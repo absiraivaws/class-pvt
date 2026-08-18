@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Class Pay — Private Class Student Payment Platform
+
+A secure web platform where private-class students register, select classes/subjects by Month/Year, generate invoices, and pay the exact amount using a **Dynamic QR code**. Includes an admin portal for student, class, subject, fee, payment, and report management.
+
+## Tech Stack
+
+- **Frontend/Backend:** Next.js 16 (App Router, TypeScript) + Tailwind CSS
+- **Database:** PostgreSQL via Prisma (Supabase-compatible)
+- **Auth:** Signed httpOnly session cookies (JWT via `jose`) + bcrypt password hashing
+- **Payments:** Provider abstraction — `MockProvider` (dev) and `LankaQrProvider` stub
+- **QR:** `qrcode` · **PDF:** `pdf-lib` · **Excel:** `exceljs` · **Email:** `nodemailer`
 
 ## Getting Started
 
-First, run the development server:
+### 1. Install dependencies
+
+```bash
+npm install
+```
+
+### 2. Database
+
+Either point `DATABASE_URL` in `.env` at Supabase, or run a local Postgres:
+
+```bash
+docker compose up -d
+```
+
+### 3. Run migrations & seed
+
+```bash
+npx prisma migrate dev
+npm run db:seed
+```
+
+The seed creates:
+
+- **Admin login:** `admin@example.com` / `Admin@123`
+- Streams, subjects (Bio Science, Chemistry, Physics, Mathematics), sessions (Day/Evening/Special), and three active class periods with fees.
+
+### 4. Run
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command               | Description                          |
+| --------------------- | ------------------------------------ |
+| `npm run dev`         | Start dev server                     |
+| `npm run build`       | Production build                     |
+| `npm run lint`        | ESLint                               |
+| `npm run typecheck`   | TypeScript check                     |
+| `npm run db:migrate`  | Create/apply Prisma migrations       |
+| `npm run db:seed`     | Seed the database                    |
+| `npm run db:studio`   | Open Prisma Studio                   |
 
-## Learn More
+## Environment Variables
 
-To learn more about Next.js, take a look at the following resources:
+See `.env.example`. Key variables:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `DATABASE_URL` — Supabase/Postgres connection string
+- `SESSION_SECRET` — secret for signing session cookies
+- `PAYMENT_PROVIDER` — `mock` (default) or `lankaqr`
+- `QR_EXPIRY_MINUTES` — dynamic QR expiry (default 10)
+- `SMTP_*` / `EMAIL_FROM` — email delivery (emails are logged to console when unset)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Payment Flow
 
-## Deploy on Vercel
+1. Student registers / logs in.
+2. Selects Month/Year, session, and subjects.
+3. System computes the total **server-side** and generates an invoice.
+4. `PAY NOW` creates a payment and a **dynamic QR** for the exact amount.
+5. Payment provider confirms via **webhook** (signature-verified, idempotent).
+6. System reconciles `invoice == payment == provider amount`, marks invoice PAID, and generates a receipt.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+**Security:** amounts are always read from the database, never trusted from the client; a QR alone never marks an invoice paid; provider callbacks are signature-verified and idempotent; duplicate payments are blocked.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## LankaQR Integration
+
+The LankaQR adapter is a stub (`src/providers/payment/lankaqr.ts`). Implement `createPayment` and `verifyWebhook` against the selected bank's API spec and set `PAYMENT_PROVIDER=lankaqr`. The mock provider exercises the full signature + reconciliation flow in development.
